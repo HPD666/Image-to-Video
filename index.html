@@ -1,1 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Image to Video Generator</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; text-align: center; padding: 20px; }
+    input, button { margin: 10px; padding: 10px; font-size: 16px; }
+    canvas { display: none; }
+    #preview { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+    #preview img { max-height: 100px; border: 2px solid #444; }
+  </style>
+</head>
+<body>
+  <h1>🖼️ Image to Video Generator</h1>
+  <input type="file" id="imageInput" multiple accept="image/*">
+  <br>
+  <label>Frame Duration (ms): <input type="number" id="frameDuration" value="500"></label>
+  <br>
+  <button onclick="generateVideo()">🎥 Generate Video</button>
+  <a id="downloadLink" style="display:none;" download="output.webm">⬇️ Download Video</a>
+  <div id="preview"></div>
+  <canvas id="canvas" width="640" height="480"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/gh/antimatter15/whammy/whammy.js"></script>
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const preview = document.getElementById('preview');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const downloadLink = document.getElementById('downloadLink');
+
+    let images = [];
+
+    imageInput.addEventListener('change', (e) => {
+      images = [];
+      preview.innerHTML = '';
+      const files = Array.from(e.target.files);
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.src = reader.result;
+          img.onload = () => {
+            images.push(img);
+            preview.appendChild(img.cloneNode());
+          };
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    function generateVideo() {
+      if (images.length === 0) {
+        alert("Please upload images first.");
+        return;
+      }
+
+      const frameDuration = parseInt(document.getElementById('frameDuration').value);
+      const encoder = new Whammy.Video(1000 / frameDuration);
+
+      images.forEach(img => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        encoder.add(ctx);
+      });
+
+      const output = encoder.compile();
+      const url = URL.createObjectURL(output);
+      downloadLink.href = url;
+      downloadLink.style.display = 'inline-block';
+    }
+  </script>
+</body>
+</html>
 
