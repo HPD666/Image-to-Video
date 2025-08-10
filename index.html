@@ -1,76 +1,638 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Advanced Image to Video Generator</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #111; color: #eee; text-align: center; padding: 20px; }
-    input, button { margin: 10px; padding: 10px; font-size: 16px; }
-    canvas { display: none; }
-    #preview { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
-    #preview img { max-height: 100px; border: 2px solid #444; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Image → Video AI-style Generator (Single File)</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --panel: #151821;
+    --accent: #6ee7ff;
+    --accent-2: #8b5cf6;
+    --text: #e7ecf2;
+    --muted: #aeb6c2;
+    --danger: #ff6b6b;
+    --ok: #51d190;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: radial-gradient(1200px 600px at 20% -10%, rgba(110,231,255,0.06), transparent 60%), var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+  header { padding: 18px 20px; border-bottom: 1px solid #1e2230; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.3px; }
+  header .badge { font-size: 12px; color: #0b1120; background: linear-gradient(90deg, var(--accent), var(--accent-2)); padding: 2px 8px; border-radius: 999px; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 18px; padding: 18px; height: calc(100% - 64px); }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; height: auto; } }
+  .panel { background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel); border: 1px solid #1e2230; border-radius: 14px; padding: 14px; }
+  .panel h2 { font-size: 14px; margin: 4px 0 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.2px; }
+  .controls { display: grid; gap: 12px; }
+  .field { display: grid; gap: 6px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  input[type="file"] { width: 100%; color: var(--muted); }
+  input[type="text"], input[type="number"], select, textarea {
+    background: #0f121a; color: var(--text); border: 1px solid #242a3a; outline: none; padding: 10px 12px; border-radius: 10px; width: 100%;
+  }
+  input[type="range"] { width: 100%; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .btn {
+    background: linear-gradient(90deg, rgba(110,231,255,0.18), rgba(139,92,246,0.18));
+    color: var(--text); border: 1px solid #2a3042; border-radius: 12px; padding: 10px 12px; cursor: pointer; font-weight: 600; transition: transform .06s ease, background .2s ease, border-color .2s ease;
+  }
+  .btn:hover { transform: translateY(-1px); border-color: #384057; }
+  .btn.primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #0b1120; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { background: linear-gradient(90deg, rgba(255,107,107,0.2), transparent); border-color: rgba(255,107,107,0.3); color: #ffdede; }
+  .toolbar { display: flex; gap: 10px; align-items: center; }
+  .status { font-size: 12px; color: var(--muted); min-height: 18px; }
+  .preview-wrap { display: grid; grid-template-rows: auto 1fr auto; gap: 10px; height: 100%; }
+  canvas { width: 100%; height: auto; background: #06080d; border-radius: 12px; border: 1px solid #1c2030; }
+  .timeline { height: 54px; background: #0f121a; border: 1px dashed #283044; border-radius: 10px; display: flex; gap: 4px; padding: 6px; overflow-x: auto; }
+  .clip { min-width: 120px; background: linear-gradient(180deg, #1a2032, #121625); border: 1px solid #2a3042; border-radius: 8px; padding: 6px; display: grid; place-items: center; color: #cfd6e3; font-size: 12px; position: relative; }
+  .clip::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(110,231,255,0.08), transparent); mask: linear-gradient(#000, #000), linear-gradient(#000, #000); mask-composite: exclude; pointer-events: none; }
+  .meter { height: 10px; background: #0f121a; border: 1px solid #27314a; border-radius: 999px; overflow: hidden; }
+  .meter > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .15s linear; }
+  .hint { font-size: 12px; color: #94a3b8; }
+  .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; color: #e2e8f0; background: #0b0e14; border: 1px solid #242a3a; padding: 1px 6px; border-radius: 6px; }
+</style>
 </head>
 <body>
-  <h1>🖼️ Image to Video Generator</h1>
-  <input type="file" id="imageInput" multiple accept="image/*">
-  <br>
-  <label>Frame Duration (ms): <input type="number" id="frameDuration" value="500"></label>
-  <br>
-  <button onclick="generateVideo()">🎥 Generate Video</button>
-  <a id="downloadLink" style="display:none;" download="output.webm">⬇️ Download Video</a>
-  <div id="preview"></div>
-  <canvas id="canvas" width="640" height="480"></canvas>
+  <header>
+    <div class="badge">Single-file</div>
+    <h1>Image → Video AI-style Generator</h1>
+  </header>
 
-  <script src="https://cdn.jsdelivr.net/gh/antimatter15/whammy/whammy.js"></script>
-  <script>
-    const imageInput = document.getElementById('imageInput');
-    const preview = document.getElementById('preview');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const downloadLink = document.getElementById('downloadLink');
+  <main>
+    <section class="panel">
+      <h2>Inputs and settings</h2>
+      <div class="controls">
+        <div class="field">
+          <label>Images (JPG/PNG/WebP) — drop or select multiple</label>
+          <input id="images" type="file" accept="image/*" multiple />
+        </div>
 
-    let images = [];
+        <div class="field">
+          <label>Optional audio (MP3/OGG/WAV)</label>
+          <input id="audio" type="file" accept="audio/*" />
+        </div>
 
-    imageInput.addEventListener('change', (e) => {
-      images = [];
-      preview.innerHTML = '';
-      const files = Array.from(e.target.files);
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const img = new Image();
-          img.src = reader.result;
-          img.onload = () => {
-            images.push(img);
-            preview.appendChild(img.cloneNode());
-          };
-        };
-        reader.readAsDataURL(file);
-      });
+        <div class="field">
+          <label>Motion prompt (e.g., “slow zoom in left pan dramatic”)</label>
+          <input id="prompt" type="text" placeholder="zoom in left pan slow cinematic dramatic" />
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Default slide duration (seconds): <span id="durLabel">3.0</span></label>
+            <input id="duration" type="range" min="1" max="12" step="0.5" value="3" />
+          </div>
+          <div class="field">
+            <label>Transition (seconds): <span id="transLabel">0.7</span></label>
+            <input id="transition" type="range" min="0" max="2" step="0.1" value="0.7" />
+          </div>
+        </div>
+
+        <div class="row-3">
+          <div class="field">
+            <label>Resolution</label>
+            <select id="resolution">
+              <option value="1280x720">1280 × 720 (HD)</option>
+              <option value="1920x1080">1920 × 1080 (Full HD)</option>
+              <option value="1080x1080">1080 × 1080 (Square)</option>
+              <option value="1080x1920">1080 × 1920 (Vertical)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>FPS</label>
+            <select id="fps">
+              <option>24</option>
+              <option selected>30</option>
+              <option>60</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Quality</label>
+            <select id="quality">
+              <option value="vp8">WebM VP8 (compatibility)</option>
+              <option value="vp9" selected>WebM VP9 (quality)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Zoom amount</label>
+            <input id="zoom" type="range" min="0" max="40" step="1" value="12" />
+          </div>
+          <div class="field">
+            <label>Pan strength</label>
+            <input id="pan" type="range" min="0" max="100" step="1" value="40" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label><input id="autoCam" type="checkbox" checked /> Auto camera (detects interesting region)</label>
+          </div>
+          <div class="field">
+            <label><input id="subtleWarp" type="checkbox" /> Subtle warp (adds micro-motion)</label>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button id="btnPreview" class="btn">Preview</button>
+          <button id="btnExport" class="btn primary">Export Video</button>
+          <button id="btnClear" class="btn ghost">Clear</button>
+        </div>
+
+        <div class="field">
+          <div class="status" id="status">Drop files anywhere on the page.</div>
+          <div class="meter"><div id="meterBar"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel preview-wrap">
+      <h2>Preview</h2>
+      <canvas id="canvas" width="1280" height="720"></canvas>
+      <div class="timeline" id="timeline"></div>
+      <div class="hint">
+        Tips: You can drop images/audio directly onto the page. Export creates a WebM file.
+        For snappier cuts, lower Transition. For calm vibes, increase slide Duration and lower Pan strength.
+      </div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  // ---------- Utilities ----------
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const easeInOut = t => t<0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+  const fitCover = (imgW, imgH, canvasW, canvasH) => {
+    const rImg = imgW/imgH, rCanvas = canvasW/canvasH;
+    let w, h, sx = 0, sy = 0;
+    if (rImg > rCanvas) { // image wider than canvas
+      h = canvasH; w = h * rImg;
+      sx = (w - canvasW)/2;
+    } else {
+      w = canvasW; h = w / rImg;
+      sy = (h - canvasH)/2;
+    }
+    return {w, h, sx, sy};
+  };
+
+  // ---------- DOM refs ----------
+  const canvas = $('#canvas');
+  const ctx = canvas.getContext('2d');
+  const imagesInput = $('#images');
+  const audioInput = $('#audio');
+  const durationInput = $('#duration');
+  const transitionInput = $('#transition');
+  const resolutionInput = $('#resolution');
+  const fpsInput = $('#fps');
+  const qualityInput = $('#quality');
+  const zoomInput = $('#zoom');
+  const panInput = $('#pan');
+  const autoCamInput = $('#autoCam');
+  const subtleWarpInput = $('#subtleWarp');
+  const statusEl = $('#status');
+  const timelineEl = $('#timeline');
+  const meterBar = $('#meterBar');
+  const promptInput = $('#prompt');
+  const btnPreview = $('#btnPreview');
+  const btnExport = $('#btnExport');
+  const btnClear = $('#btnClear');
+
+  // ---------- State ----------
+  let slides = []; // {file,name,bitmap,w,h, centroid:{x,y}}
+  let audioBlob = null;
+  let playing = false;
+  let previewRAF = null;
+  let previewStart = 0;
+  let lastFrameTime = 0;
+
+  // ---------- Drag and drop ----------
+  const preventDefaults = e => { e.preventDefault(); e.stopPropagation(); };
+  ['dragenter','dragover','dragleave','drop'].forEach(ev => {
+    document.body.addEventListener(ev, preventDefaults, false);
+  });
+  document.body.addEventListener('drop', async (e) => {
+    const files = [...e.dataTransfer.files];
+    const imgs = files.filter(f => f.type.startsWith('image/'));
+    const aud = files.find(f => f.type.startsWith('audio/'));
+    if (imgs.length) await handleImages(imgs);
+    if (aud) await handleAudio(aud);
+  });
+
+  // ---------- File handlers ----------
+  imagesInput.addEventListener('change', e => handleImages([...e.target.files]));
+  audioInput.addEventListener('change', e => handleAudio(e.target.files[0]));
+
+  async function handleImages(files) {
+    status(`Loading ${files.length} image(s)…`);
+    for (let f of files) {
+      const bitmap = await createImageBitmap(f);
+      slides.push({ file: f, name: f.name, bitmap, w: bitmap.width, h: bitmap.height, centroid: null });
+    }
+    await computeCentroids();
+    refreshTimeline();
+    status(`Loaded ${slides.length} image(s).`);
+  }
+
+  async function handleAudio(file) {
+    audioBlob = file;
+    status(`Loaded audio: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`);
+  }
+
+  function refreshTimeline() {
+    timelineEl.innerHTML = '';
+    slides.forEach((s, idx) => {
+      const clip = document.createElement('div');
+      clip.className = 'clip';
+      clip.textContent = `${idx+1}. ${s.name}`;
+      timelineEl.appendChild(clip);
     });
+  }
 
-    function generateVideo() {
-      if (images.length === 0) {
-        alert("Please upload images first.");
+  // ---------- Edge-based centroid (auto camera focus) ----------
+  async function computeCentroids() {
+    for (let s of slides) {
+      s.centroid = await edgeCentroid(s.bitmap);
+    }
+  }
+  async function edgeCentroid(bitmap) {
+    // Downscale for speed
+    const tmp = document.createElement('canvas');
+    const S = 256;
+    const ratio = bitmap.width/bitmap.height;
+    tmp.width = ratio >= 1 ? S : Math.round(S*ratio);
+    tmp.height = ratio >= 1 ? Math.round(S/ratio) : S;
+    const tctx = tmp.getContext('2d', { willReadFrequently: true });
+    tctx.drawImage(bitmap, 0, 0, tmp.width, tmp.height);
+    const { data, width, height } = tctx.getImageData(0,0,tmp.width,tmp.height);
+
+    // Grayscale
+    const gray = new Float32Array(width*height);
+    for (let i=0, j=0; i<data.length; i+=4, j++) {
+      gray[j] = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+    }
+    // Sobel
+    const GxK = [-1,0,1,-2,0,2,-1,0,1];
+    const GyK = [-1,-2,-1,0,0,0,1,2,1];
+    const mag = new Float32Array(width*height);
+    for (let y=1; y<height-1; y++) {
+      for (let x=1; x<width-1; x++) {
+        let gx=0, gy=0, idx=y*width + x;
+        let k=0;
+        for (let ky=-1; ky<=1; ky++) {
+          for (let kx=-1; kx<=1; kx++) {
+            const v = gray[(y+ky)*width + (x+kx)];
+            gx += v * GxK[k]; gy += v * GyK[k]; k++;
+          }
+        }
+        mag[idx] = Math.hypot(gx, gy);
+      }
+    }
+    // Weighted centroid
+    let sum=0, cx=0, cy=0;
+    for (let y=0; y<height; y++) {
+      for (let x=0; x<width; x++) {
+        const m = mag[y*width + x];
+        sum += m; cx += x*m; cy += y*m;
+      }
+    }
+    if (sum < 1e-3) return { x: bitmap.width/2, y: bitmap.height/2 };
+    cx /= sum; cy /= sum;
+    // Map back to original bitmap coordinates
+    const scaleX = bitmap.width / tmp.width;
+    const scaleY = bitmap.height / tmp.height;
+    return { x: cx*scaleX, y: cy*scaleY };
+  }
+
+  // ---------- Prompt parser ----------
+  function parsePrompt(text) {
+    text = (text || '').toLowerCase();
+    const speed = text.includes('fast') ? 1.4 : text.includes('slow') ? 0.7 : 1.0;
+    const dramatic = text.includes('dramatic') || text.includes('cinematic');
+    const zoomIn = text.includes('zoom in') || (text.includes('zoom') && !text.includes('out'));
+    const zoomOut = text.includes('zoom out');
+    const panLeft = text.includes('left');
+    const panRight = text.includes('right');
+    const panUp = text.includes('up');
+    const panDown = text.includes('down');
+    const rotate = text.includes('rotate') || text.includes('tilt');
+    const shake = text.includes('shake') || text.includes('handheld');
+    const glitch = text.includes('glitch');
+    return { speed, dramatic, zoomIn, zoomOut, panLeft, panRight, panUp, panDown, rotate, shake, glitch };
+  }
+
+  // ---------- Preview ----------
+  btnPreview.addEventListener('click', () => {
+    if (playing) { stopPreview(); return; }
+    if (!slides.length) { status('Add at least one image.'); return; }
+    playPreview();
+  });
+  btnClear.addEventListener('click', () => {
+    slides = [];
+    audioBlob = null;
+    stopPreview();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    refreshTimeline();
+    status('Cleared.');
+  });
+
+  function stopPreview() {
+    playing = false;
+    cancelAnimationFrame(previewRAF);
+    btnPreview.textContent = 'Preview';
+    status('Stopped.');
+  }
+
+  function playPreview() {
+    playing = true;
+    btnPreview.textContent = 'Stop';
+    const [W,H] = getResolution();
+    if (canvas.width !== W || canvas.height !== H) {
+      canvas.width = W; canvas.height = H;
+    }
+    const timeline = buildTimeline();
+    previewStart = performance.now();
+    lastFrameTime = previewStart;
+    const fps = parseInt(fpsInput.value, 10);
+    const frameInterval = 1000 / fps;
+    const prompt = parsePrompt(promptInput.value);
+
+    const tick = (now) => {
+      if (!playing) return;
+      const elapsed = (now - previewStart) / 1000;
+      if (elapsed > timeline.total) {
+        stopPreview();
         return;
       }
+      if (now - lastFrameTime < frameInterval-2) {
+        previewRAF = requestAnimationFrame(tick);
+        return;
+      }
+      lastFrameTime = now;
+      drawFrame(ctx, canvas.width, canvas.height, timeline, elapsed, prompt, false);
+      previewRAF = requestAnimationFrame(tick);
+    };
+    previewRAF = requestAnimationFrame(tick);
+  }
 
-      const frameDuration = parseInt(document.getElementById('frameDuration').value);
-      const encoder = new Whammy.Video(1000 / frameDuration);
+  // ---------- Export ----------
+  btnExport.addEventListener('click', async () => {
+    if (!slides.length) { status('Add at least one image.'); return; }
+    stopPreview();
 
-      images.forEach(img => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        encoder.add(ctx);
-      });
+    const [W,H] = getResolution();
+    canvas.width = W; canvas.height = H;
 
-      const output = encoder.compile();
-      const url = URL.createObjectURL(output);
-      downloadLink.href = url;
-      downloadLink.style.display = 'inline-block';
+    const timeline = buildTimeline();
+    const fps = parseInt(fpsInput.value, 10);
+    const prompt = parsePrompt(promptInput.value);
+
+    const canvasStream = canvas.captureStream(fps);
+    const combinedStream = new MediaStream();
+
+    // Try to add video track
+    const vTrack = canvasStream.getVideoTracks()[0];
+    if (vTrack) combinedStream.addTrack(vTrack);
+
+    // Setup audio if provided
+    let audioEl = null, audioCtx = null, dest = null;
+    if (audioBlob) {
+      audioEl = document.createElement('audio');
+      audioEl.src = URL.createObjectURL(audioBlob);
+      audioEl.crossOrigin = 'anonymous';
+      audioEl.loop = false;
+      audioEl.preload = 'auto';
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(audioEl);
+      dest = audioCtx.createMediaStreamDestination();
+      src.connect(dest);
+      src.connect(audioCtx.destination); // local monitor
+      const aTrack = dest.stream.getAudioTracks()[0];
+      if (aTrack) combinedStream.addTrack(aTrack);
     }
-  </script>
+
+    // Choose codec
+    const candidates = [
+      `video/webm;codecs=${qualityInput.value === 'vp9' ? 'vp9' : 'vp8'}`,
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    let mimeType = candidates.find(m => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) mimeType = 'video/webm';
+
+    const rec = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 7_000_000, audioBitsPerSecond: 192_000 });
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstart = () => status('Recording…');
+    rec.onerror = e => status('Recording error.');
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g,'-');
+      a.download = `image2video-${ts}.webm`;
+      a.click();
+      URL.revokeObjectURL(url);
+      status('Export complete.');
+      meter(0);
+    };
+
+    // Render in real time
+    const totalSec = timeline.total;
+    let start = performance.now();
+    let last = start;
+    const frameInterval = 1000 / fps;
+    let stopped = false;
+
+    // Start audio sync
+    if (audioEl && audioCtx) {
+      await audioCtx.resume();
+      audioEl.currentTime = 0;
+      audioEl.play();
+      // Stop audio when video ends
+      setTimeout(() => { try { audioEl.pause(); } catch{} }, totalSec*1000 + 50);
+    }
+
+    rec.start(100);
+
+    const render = (now) => {
+      if (stopped) return;
+      const elapsed = (now - start) / 1000;
+      meter((elapsed/totalSec)*100);
+      if (elapsed >= totalSec) {
+        drawFrame(ctx, canvas.width, canvas.height, timeline, totalSec - 1e-3, prompt, true);
+        rec.stop();
+        stopped = true;
+        return;
+      }
+      if (now - last >= frameInterval-2) {
+        last = now;
+        drawFrame(ctx, canvas.width, canvas.height, timeline, elapsed, prompt, true);
+      }
+      requestAnimationFrame(render);
+    };
+    requestAnimationFrame(render);
+  });
+
+  // ---------- Timeline builder ----------
+  function buildTimeline() {
+    const dur = parseFloat(durationInput.value);
+    const trans = parseFloat(transitionInput.value);
+    const perSlide = slides.map(s => ({ slide: s, duration: dur }));
+    const total = perSlide.reduce((acc, it) => acc + it.duration, 0) + Math.max(0, (perSlide.length-1)*(-trans)) + Math.max(0, (perSlide.length-1)*trans);
+    // Note: actual total accounts for overlaps; simplified below
+    const times = [];
+    let t = 0;
+    for (let i=0; i<perSlide.length; i++) {
+      times.push({ start: t, end: t + dur });
+      t += dur - (i < perSlide.length-1 ? trans : 0);
+    }
+    return { items: perSlide, times, total: times.at(-1)?.end || 0, transition: trans };
+  }
+
+  // ---------- Drawing ----------
+  function drawFrame(ctx, W, H, timeline, elapsed, prompt, warp) {
+    ctx.save();
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#0a0c12';
+    ctx.fillRect(0,0,W,H);
+
+    const { items, times, transition } = timeline;
+    let idx = times.findIndex((seg, i) => elapsed >= seg.start && elapsed <= seg.end + (i<times.length-1 ? transition : 0));
+    if (idx === -1) idx = times.length - 1;
+    idx = clamp(idx, 0, times.length-1);
+
+    const seg = times[idx];
+    const slide = items[idx].slide;
+    const prog = clamp((elapsed - seg.start) / (seg.end - seg.start), 0, 1);
+    const transProg = (idx < times.length-1) ? clamp((elapsed - (seg.end - transition)) / transition, 0, 1) : 0;
+
+    const zAmt = parseInt(zoomInput.value, 10) / 100; // 0..0.4
+    const pAmt = parseInt(panInput.value, 10) / 100; // 0..1
+    const autoCam = autoCamInput.checked;
+    const subtle = subtleWarpInput.checked && warp;
+
+    // Motion plan
+    const m = planMotion(slide, W, H, prog, zAmt, pAmt, autoCam, prompt);
+
+    // Current image
+    drawImageMotion(ctx, slide.bitmap, slide.w, slide.h, W, H, m, subtle, elapsed);
+
+    // Crossfade to next
+    if (transProg > 0 && idx < items.length-1) {
+      const nextSlide = items[idx+1].slide;
+      const m2 = planMotion(nextSlide, W, H, 0, zAmt, pAmt, autoCam, prompt, true);
+      ctx.globalAlpha = easeInOut(transProg);
+      drawImageMotion(ctx, nextSlide.bitmap, nextSlide.w, nextSlide.h, W, H, m2, subtle, elapsed + 0.1);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
+
+  function planMotion(slide, W, H, prog, zAmt, pAmt, autoCam, prompt, entering=false) {
+    // Determine start/end focal points in image space
+    const cx = slide.centroid?.x ?? slide.w/2;
+    const cy = slide.centroid?.y ?? slide.h/2;
+
+    // Base zoom
+    let zStart = 1.0 + (entering ? zAmt*0.2 : 0);
+    let zEnd = 1.0 + (zAmt * (prompt.zoomOut ? -0.6 : 1.0));
+    if (prompt.zoomOut) [zStart, zEnd] = [1.1 + zAmt, 1.0 + zAmt*0.2];
+    if (prompt.zoomIn) { zStart = 1.0; zEnd = 1.0 + zAmt*1.2; }
+
+    // Pan direction from prompt
+    let dirX = prompt.panLeft ? -1 : prompt.panRight ? 1 : 0;
+    let dirY = prompt.panUp ? -1 : prompt.panDown ? 1 : 0;
+
+    // If autoCam, pan toward centroid
+    let startFocus = { x: slide.w/2, y: slide.h/2 };
+    let endFocus = { x: slide.w/2 + dirX * (slide.w * 0.08), y: slide.h/2 + dirY * (slide.h * 0.08) };
+    if (autoCam) {
+      // Bias toward centroid
+      const k = 0.55; // how strongly we aim center at centroid
+      startFocus = { x: lerp(slide.w/2, cx, k*0.8), y: lerp(slide.h/2, cy, k*0.8) };
+      endFocus   = { x: lerp(slide.w/2 + dirX*slide.w*0.06, cx, k), y: lerp(slide.h/2 + dirY*slide.h*0.06, cy, k) };
+    }
+
+    // Dramatic slows down near middle
+    const t = prompt.speed !== 1 ? clamp(prog * prompt.speed, 0, 1) : prog;
+    const e = (prompt.dramatic ? easeInOut(t) : t);
+
+    // Optional rotation and subtle handheld shake
+    const rot = (prompt.rotate ? (Math.sin(prog*Math.PI*2)*0.01) : 0) + (prompt.shake ? (Math.sin(prog*20)*0.003) : 0);
+
+    return { z: lerp(zStart, zEnd, e), focus: { x: lerp(startFocus.x, endFocus.x, e), y: lerp(startFocus.y, endFocus.y, e) }, rot };
+  }
+
+  function drawImageMotion(ctx, img, imgW, imgH, W, H, m, subtle, timeSec) {
+    ctx.save();
+
+    // Fit image to cover canvas at base scale, then apply additional zoom z
+    const fit = fitCover(imgW, imgH, W, H);
+    const baseScale = fit.w / imgW; // scale to cover
+    const scale = baseScale * (1 + m.z);
+    const centerCanvas = { x: W/2, y: H/2 };
+
+    // Convert focus point in image space to canvas space at current scale
+    const focusCanvasX = (imgW/2 - m.focus.x) * scale; // negative shifts to center focus
+    const focusCanvasY = (imgH/2 - m.focus.y) * scale;
+
+    // Subtle warp micro-motion (no WebGL): tiny sinusoidal offsets per axis
+    const warpX = subtle ? Math.sin(timeSec*1.7) * 3 : 0;
+    const warpY = subtle ? Math.cos(timeSec*1.3) * 3 : 0;
+
+    ctx.translate(centerCanvas.x + warpX, centerCanvas.y + warpY);
+    ctx.rotate(m.rot);
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Draw with the image centered; offset so that selected focus lands at canvas center
+    ctx.drawImage(
+      img,
+      -imgW/2 + focusCanvasX,
+      -imgH/2 + focusCanvasY
+    );
+
+    ctx.restore();
+  }
+
+  // ---------- UI helpers ----------
+  function status(msg) { statusEl.textContent = msg; }
+  function meter(pct) { meterBar.style.width = `${clamp(pct,0,100)}%`; }
+  durationInput.addEventListener('input', () => { $('#durLabel').textContent = Number(durationInput.value).toFixed(1); });
+  transitionInput.addEventListener('input', () => { $('#transLabel').textContent = Number(transitionInput.value).toFixed(1); });
+
+  function getResolution() {
+    const [w,h] = resolutionInput.value.split('x').map(Number);
+    return [w,h];
+  }
+
+  // ---------- Keyboard shortcuts ----------
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      btnPreview.click();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+      e.preventDefault();
+      btnExport.click();
+    }
+  });
+
+  // ---------- Initialize ----------
+  status('Ready. Add images and press Preview.');
+})();
+</script>
 </body>
 </html>
-
